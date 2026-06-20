@@ -3,8 +3,9 @@ Centralised settings, loaded from environment variables.
 Never hardcode secrets (API keys, DB passwords) anywhere else in the codebase —
 everything sensitive comes through here.
 """
-from pydantic_settings import BaseSettings
-from typing import List
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
+from typing import List, Union
 
 
 class Settings(BaseSettings):
@@ -21,14 +22,28 @@ class Settings(BaseSettings):
     # security problem (API key exposed in browser JS).
     anthropic_api_key: str = ""
 
-    # CORS
-    cors_origins: List[str] = ["http://localhost:3000"]
+    # CORS — accepts EITHER a JSON array (e.g. ["https://a.com","https://b.com"])
+    # OR a plain comma-separated string (e.g. https://a.com,https://b.com).
+    # Railway/Vercel/Render variable input boxes frequently mangle JSON
+    # syntax (stripped brackets/quotes), which previously crashed the app
+    # on boot with a JSONDecodeError. Accepting the plain form removes that
+    # entire failure mode — paste a bare URL and it just works.
+    cors_origins: Union[str, List[str]] = "http://localhost:3000"
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v):
+        if isinstance(v, str):
+            stripped = v.strip()
+            if stripped.startswith("["):
+                return v
+            return [origin.strip() for origin in stripped.split(",") if origin.strip()]
+        return v
 
     # Environment
     environment: str = "development"
 
-    class Config:
-        env_file = ".env"
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
 settings = Settings()
